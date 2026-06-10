@@ -1,0 +1,335 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Dodge Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #0d1117;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            background: linear-gradient(to bottom, #161b22, #0d1117);
+            border: 4px solid #58a6ff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(88, 166, 255, 0.4);
+            overflow: hidden;
+        }
+
+        #canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(13, 17, 23, 0.85);
+            transition: opacity 0.3s ease;
+        }
+
+        .menu-box {
+            text-align: center;
+            padding: 30px;
+            border-radius: 8px;
+            background: #1f242c;
+            border: 1px solid #30363d;
+            max-width: 85%;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #58a6ff;
+            text-shadow: 0 0 10px rgba(88, 166, 255, 0.5);
+        }
+
+        p {
+            color: #8b949e;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        button {
+            background-color: #238636;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
+        }
+
+        button:hover {
+            background-color: #2ea043;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-family: monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+        }
+
+        .score-box { color: #58a6ff; }
+        .lives-box { color: #ff7b72; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- HUD for live stats -->
+        <div id="hud">
+            <div class="score-box">SCORE: <span id="score-val">0</span></div>
+            <div class="lives-box">LIVES: <span id="lives-val">3</span></div>
+        </div>
+
+        <!-- Game Canvas -->
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+        <!-- Overlay Menu for Start/Game Over -->
+        <div id="ui-layer">
+            <div class="menu-box" id="menu-content">
+                <h1 id="menu-title">CYBER DODGE</h1>
+                <p id="menu-text">Use Left/Right Arrows or A/D to move. Dodge the red glitches, collect the green energy blocks!</p>
+                <button id="start-btn">START GAME</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const startBtn = document.getElementById('start-btn');
+        const menuTitle = document.getElementById('menu-title');
+        const menuText = document.getElementById('menu-text');
+        const scoreVal = document.getElementById('score-val');
+        const livesVal = document.getElementById('lives-val');
+
+        // Game State
+        let gameActive = false;
+        let score = 0;
+        let lives = 3;
+        let speedMultiplier = 1;
+        let spawnTimer = 0;
+
+        // Player Entity
+        const player = {
+            x: 180,
+            y: 520,
+            width: 40,
+            height: 40,
+            speed: 7,
+            color: '#58a6ff'
+        };
+
+        // Arrays for falling entities
+        let fallingObjects = [];
+
+        // Keyboard Input Tracking
+        const keys = {
+            ArrowLeft: false,
+            ArrowRight: false,
+            a: false,
+            d: false
+        };
+
+        // Event Listeners
+        window.addEventListener('keydown', (e) => {
+            if (e.key in keys) keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key in keys) keys[e.key] = false;
+        });
+
+        startBtn.addEventListener('click', startGame);
+
+        function startGame() {
+            // Reset game variables
+            score = 0;
+            lives = 3;
+            speedMultiplier = 1;
+            fallingObjects = [];
+            player.x = canvas.width / 2 - player.width / 2;
+            
+            scoreVal.textContent = score;
+            livesVal.textContent = lives;
+
+            // Hide Menu UI
+            uiLayer.style.opacity = '0';
+            setTimeout(() => { uiLayer.style.display = 'none'; }, 300);
+
+            gameActive = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            uiLayer.style.display = 'flex';
+            setTimeout(() => { uiLayer.style.opacity = '1'; }, 10);
+            
+            menuTitle.textContent = "GAME OVER";
+            menuText.innerHTML = `You ran out of structural integrity.<br><br><strong>Final Score: ${score}</strong>`;
+            startBtn.textContent = "TRY AGAIN";
+        }
+
+        // Object Spawner Factory
+        function spawnObject() {
+            const types = ['obstacle', 'obstacle', 'obstacle', 'point']; // 75% chance obstacle, 25% chance point
+            const chosenType = types[Math.floor(Math.random() * types.length)];
+            
+            const size = Math.floor(Math.random() * 20) + 15; // Random size between 15 and 35
+            const x = Math.random() * (canvas.width - size);
+            
+            fallingObjects.push({
+                x: x,
+                y: -size,
+                width: size,
+                height: size,
+                type: chosenType,
+                speed: (Math.random() * 3 + 2) * speedMultiplier,
+                color: chosenType === 'obstacle' ? '#ff7b72' : '#7ee787'
+            });
+        }
+
+        // Main Loop
+        function gameLoop() {
+            if (!gameActive) return;
+
+            // 1. Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Move Player
+            if (keys.ArrowLeft || keys.a) {
+                player.x -= player.speed;
+                if (player.x < 0) player.x = 0;
+            }
+            if (keys.ArrowRight || keys.d) {
+                player.x += player.speed;
+                if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+            }
+
+            // 3. Draw Player (with a slight glow)
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0; // reset glow
+
+            // 4. Handle Spawning (frequency increases slowly over time)
+            spawnTimer++;
+            const spawnRate = Math.max(15, 40 - Math.floor(score / 5)); // Spawns faster as score increases
+            if (spawnTimer >= spawnRate) {
+                spawnObject();
+                spawnTimer = 0;
+            }
+
+            // 5. Update & Draw Falling Objects
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                let obj = fallingObjects[i];
+                obj.y += obj.speed;
+
+                // Draw Object
+                ctx.fillStyle = obj.color;
+                if (obj.type === 'obstacle') {
+                    // Draw obstacles as diamonds
+                    ctx.beginPath();
+                    ctx.moveTo(obj.x + obj.width/2, obj.y);
+                    ctx.lineTo(obj.x + obj.width, obj.y + obj.height/2);
+                    ctx.lineTo(obj.x + obj.width/2, obj.y + obj.height);
+                    ctx.lineTo(obj.x, obj.y + obj.height/2);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Draw points as circles
+                    ctx.beginPath();
+                    ctx.arc(obj.x + obj.width/2, obj.y + obj.height/2, obj.width/2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Collision Detection
+                if (
+                    obj.x < player.x + player.width &&
+                    obj.x + obj.width > player.x &&
+                    obj.y < player.y + player.height &&
+                    obj.y + obj.height > player.y
+                ) {
+                    // Collision occurred!
+                    if (obj.type === 'obstacle') {
+                        lives--;
+                        livesVal.textContent = lives;
+                        // Flash screen red briefly
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
+                        }
+                    } else {
+                        score += 10;
+                        scoreVal.textContent = score;
+                        // Dynamic Difficulty scaling
+                        speedMultiplier = 1 + (score / 150); 
+                    }
+                    fallingObjects.splice(i, 1);
+                    continue;
+                }
+
+                // Remove out of bounds objects
+                if (obj.y > canvas.height) {
+                    fallingObjects.splice(i, 1);
+                }
+            }
+
+            // Request next animation frame
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
+
+```
